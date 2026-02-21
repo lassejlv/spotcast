@@ -1,0 +1,5 @@
+# Spotcast
+
+A little spotligt for your mac, written i pure swift. Using swiftui so fully native. Comes with a plugin engine (see `Sources/Plugins`)
+
+This is currently under development and not ready for day-to-today use.

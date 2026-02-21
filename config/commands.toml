@@ -1,0 +1,6 @@
+[[commands]]
+id = "hello-shell"
+title = "Say Hello"
+subtitle = "Print a hello message"
+keywords = ["test", "shell"]
+command = "osascript -e 'display notification \"Hello from Spotcast\" with title \"Spotcast\"'"

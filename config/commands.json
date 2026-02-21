@@ -1,0 +1,18 @@
+{
+  "commands": [
+    {
+      "id": "open-github",
+      "title": "Open GitHub",
+      "subtitle": "Launch github.com in browser",
+      "keywords": ["git", "code", "web"],
+      "command": "open https://github.com"
+    },
+    {
+      "id": "show-spotcast-files",
+      "title": "Reveal Spotcast Folder",
+      "subtitle": "Open project folder in Finder",
+      "keywords": ["finder", "project", "files"],
+      "command": "open ."
+    }
+  ]
+}
