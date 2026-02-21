@@ -6,16 +6,19 @@ public struct PluginMetadata: Sendable {
     public let subtitle: String
     public let keywords: [String]
     public let iconSystemName: String?
+    public let storageNamespace: String?
 
     public init(
         id: String, title: String, subtitle: String, keywords: [String] = [],
-        iconSystemName: String? = nil
+        iconSystemName: String? = nil,
+        storageNamespace: String? = nil
     ) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.keywords = keywords
         self.iconSystemName = iconSystemName
+        self.storageNamespace = storageNamespace
     }
 }
 
@@ -91,15 +94,55 @@ public protocol PluginStorage: Sendable {
     func allKeys() async -> [String]
 }
 
+public enum PluginToastStyle: String, Sendable {
+    case info
+    case success
+    case warning
+    case error
+}
+
+public struct PluginToast: Identifiable, Sendable {
+    public let id: UUID
+    public let title: String
+    public let message: String
+    public let style: PluginToastStyle
+    public let duration: TimeInterval
+
+    public init(
+        id: UUID = UUID(),
+        title: String,
+        message: String,
+        style: PluginToastStyle = .info,
+        duration: TimeInterval = 2.0
+    ) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.style = style
+        self.duration = duration
+    }
+}
+
+public protocol PluginToaster: Sendable {
+    func show(_ toast: PluginToast) async
+}
+
 public struct PluginContext: Sendable {
     public let values: PluginInputValues
     public let workspacePath: String
     public let storage: any PluginStorage
+    public let toaster: any PluginToaster
 
-    public init(values: PluginInputValues, workspacePath: String, storage: any PluginStorage) {
+    public init(
+        values: PluginInputValues,
+        workspacePath: String,
+        storage: any PluginStorage,
+        toaster: any PluginToaster
+    ) {
         self.values = values
         self.workspacePath = workspacePath
         self.storage = storage
+        self.toaster = toaster
     }
 }
 

@@ -8,6 +8,14 @@ struct PluginFormSession: Identifiable {
     let plugin: any SpotcastPlugin
 }
 
+struct RuntimePluginToaster: PluginToaster {
+    func show(_ toast: PluginToast) async {
+        await MainActor.run {
+            ToastCenter.shared.push(toast)
+        }
+    }
+}
+
 @MainActor
 enum SwiftPluginRuntime {
     static func plugins() -> [any SpotcastPlugin] {
@@ -18,16 +26,26 @@ enum SwiftPluginRuntime {
         -> String?
     {
         do {
-            let storage = LocalPluginStorage(pluginID: plugin.metadata.id)
+            let namespace = plugin.metadata.storageNamespace ?? plugin.metadata.id
+            let storage = LocalPluginStorage(pluginID: namespace)
             let context = PluginContext(
                 values: PluginInputValues(storage: values),
                 workspacePath: FileManager.default.currentDirectoryPath,
-                storage: storage
+                storage: storage,
+                toaster: RuntimePluginToaster()
             )
             let result = try await plugin.run(context: context)
             return handle(result)
         } catch {
-            return error.localizedDescription
+            ToastCenter.shared.push(
+                PluginToast(
+                    title: "Plugin Error",
+                    message: error.localizedDescription,
+                    style: .error,
+                    duration: 2.6
+                )
+            )
+            return nil
         }
     }
 
@@ -37,7 +55,14 @@ enum SwiftPluginRuntime {
             return nil
         case .openURL(let raw):
             guard let url = normalizedURL(raw) else {
-                return "Invalid URL"
+                ToastCenter.shared.push(
+                    PluginToast(
+                        title: "Open URL",
+                        message: "Invalid URL",
+                        style: .error
+                    )
+                )
+                return nil
             }
             NSWorkspace.shared.open(url)
             return nil
@@ -48,9 +73,23 @@ enum SwiftPluginRuntime {
             let board = NSPasteboard.general
             board.clearContents()
             board.setString(text, forType: .string)
-            return "Copied to clipboard"
+            ToastCenter.shared.push(
+                PluginToast(
+                    title: "Clipboard",
+                    message: "Copied to clipboard",
+                    style: .success
+                )
+            )
+            return nil
         case .message(let message):
-            return message
+            ToastCenter.shared.push(
+                PluginToast(
+                    title: "Spotcast",
+                    message: message,
+                    style: .info
+                )
+            )
+            return nil
         }
     }
 

@@ -26,7 +26,8 @@ struct LauncherAction: Identifiable {
                 icon: NSImage(systemSymbolName: "folder", accessibilityDescription: nil),
                 appIconPath: nil,
                 kind: .instant {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+                    NSWorkspace.shared.open(
+                        URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
                 }
             ),
             LauncherAction(
@@ -48,9 +49,9 @@ struct LauncherAction: Identifiable {
                 icon: NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil),
                 appIconPath: nil,
                 kind: .instant {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    openSettingsWindow()
                 }
-            )
+            ),
         ]
     }
 
@@ -105,10 +106,32 @@ struct LauncherAction: Identifiable {
             title: plugin.metadata.title,
             subtitle: plugin.metadata.subtitle,
             keywords: ["swift", "plugin"] + plugin.metadata.keywords,
-            icon: plugin.metadata.iconSystemName.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+            icon: plugin.metadata.iconSystemName.flatMap {
+                NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+            }
                 ?? NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil),
             appIconPath: nil,
             kind: .swiftPlugin(plugin)
+        )
+    }
+
+    static func quicklink(name: String, url: String, iconSystemName: String?) -> LauncherAction {
+        let symbol = iconSystemName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let icon =
+            symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+            ?? NSImage(systemSymbolName: "link.circle", accessibilityDescription: nil)
+
+        return LauncherAction(
+            id: "quicklink:\(name.lowercased())",
+            title: name,
+            subtitle: url,
+            keywords: ["quicklink", "bookmark", "link", name.lowercased(), url.lowercased()],
+            icon: icon,
+            appIconPath: nil,
+            kind: .instant {
+                guard let parsed = URL(string: url) else { return }
+                NSWorkspace.shared.open(parsed)
+            }
         )
     }
 }

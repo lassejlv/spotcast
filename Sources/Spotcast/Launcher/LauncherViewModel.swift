@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SpotcastPluginKit
 
@@ -11,6 +12,7 @@ final class LauncherViewModel: ObservableObject {
 
     @Published private(set) var selectedIndex = 0
     @Published private(set) var selectedActionID: String?
+    @Published private(set) var scrollTargetActionID: String?
     @Published private(set) var actions: [LauncherAction] = LauncherAction.builtins() {
         didSet {
             rebuildFilteredActions(resetSelection: false)
@@ -21,25 +23,39 @@ final class LauncherViewModel: ObservableObject {
     @Published var statusMessage: String?
 
     private let usageStore = ActionUsageStore.shared
+    private let pluginSettings = PluginSettings.shared
+    private var cachedQuicklinkActions: [LauncherAction] = []
     private var cachedAppActions: [LauncherAction] = []
     private var lastAppRefreshAt: Date?
     private var isRefreshingApps = false
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
+        pluginSettings.$disabledActionIDs
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.actions =
+                    self.baseActions() + self.cachedQuicklinkActions + self.cachedAppActions
+            }
+            .store(in: &cancellables)
+
         rebuildFilteredActions(resetSelection: true)
     }
 
     func prepareForPresentation() {
         selectedIndex = 0
         selectedActionID = nil
+        scrollTargetActionID = nil
         query = ""
-        actions = baseActions() + cachedAppActions
+        actions = baseActions() + cachedQuicklinkActions + cachedAppActions
+        refreshQuicklinks()
         refreshCatalogIfNeeded()
     }
 
     private func refreshCatalogIfNeeded() {
         let now = Date()
-        if let last = lastAppRefreshAt, now.timeIntervalSince(last) < 60, !cachedAppActions.isEmpty {
+        if let last = lastAppRefreshAt, now.timeIntervalSince(last) < 60, !cachedAppActions.isEmpty
+        {
             return
         }
         refreshCatalog()
@@ -51,7 +67,7 @@ final class LauncherViewModel: ObservableObject {
         }
 
         isRefreshingApps = true
-        actions = baseActions() + cachedAppActions
+        actions = baseActions() + cachedQuicklinkActions + cachedAppActions
 
         Task.detached(priority: .utility) {
             let appActions = AppIndexer.installedApps().map(LauncherAction.app)
@@ -59,23 +75,39 @@ final class LauncherViewModel: ObservableObject {
             await MainActor.run {
                 self.cachedAppActions = appActions
                 self.lastAppRefreshAt = Date()
-                self.actions = self.baseActions() + appActions
+                self.actions = self.baseActions() + self.cachedQuicklinkActions + appActions
                 self.isRefreshingApps = false
             }
         }
     }
 
+    private func refreshQuicklinks() {
+        Task {
+            let quicklinkActions = await QuicklinkActionProvider.loadActions()
+            await MainActor.run {
+                self.cachedQuicklinkActions = quicklinkActions
+                self.actions = self.baseActions() + quicklinkActions + self.cachedAppActions
+            }
+        }
+    }
+
     private func baseActions() -> [LauncherAction] {
-        let scriptPluginActions = PluginCommandLoader.load().map(LauncherAction.plugin)
+        let scriptPluginActions = PluginCommandLoader.load()
+            .map(LauncherAction.plugin)
+            .filter { pluginSettings.isEnabled(actionID: $0.id) }
         let settingsActions = SystemSettingsCatalog.entries().map(LauncherAction.setting)
-        let swiftPluginActions = SwiftPluginRuntime.plugins().map(LauncherAction.swiftPlugin)
-        return LauncherAction.builtins() + swiftPluginActions + settingsActions + scriptPluginActions
+        let swiftPluginActions = SwiftPluginRuntime.plugins()
+            .map(LauncherAction.swiftPlugin)
+            .filter { pluginSettings.isEnabled(actionID: $0.id) }
+        return LauncherAction.builtins() + swiftPluginActions + settingsActions
+            + scriptPluginActions
     }
 
     func moveSelection(up: Bool) {
         guard !filteredActions.isEmpty else {
             selectedIndex = 0
             selectedActionID = nil
+            scrollTargetActionID = nil
             return
         }
 
@@ -87,7 +119,7 @@ final class LauncherViewModel: ObservableObject {
             nextIndex = (selectedIndex + 1) % count
         }
 
-        updateSelection(index: nextIndex)
+        updateSelection(index: nextIndex, requestScroll: true)
     }
 
     func executeSelected() -> Bool {
@@ -141,10 +173,10 @@ final class LauncherViewModel: ObservableObject {
         usageStore.recordExecution(for: action.id)
 
         switch action.kind {
-        case let .instant(run):
+        case .instant(let run):
             run()
             return true
-        case let .swiftPlugin(plugin):
+        case .swiftPlugin(let plugin):
             if plugin.fields.isEmpty {
                 executePlugin(plugin, values: [:])
                 return true
@@ -160,6 +192,7 @@ final class LauncherViewModel: ObservableObject {
             let message = await SwiftPluginRuntime.execute(plugin: plugin, values: values)
             await MainActor.run {
                 self.showStatus(message)
+                self.refreshQuicklinks()
             }
         }
     }
@@ -193,10 +226,12 @@ final class LauncherViewModel: ObservableObject {
             return (action, matchScore + usageBoost)
         }
 
-        filteredActions = scored
+        filteredActions =
+            scored
             .sorted { lhs, rhs in
                 if lhs.score == rhs.score {
-                    return lhs.action.title.localizedCaseInsensitiveCompare(rhs.action.title) == .orderedAscending
+                    return lhs.action.title.localizedCaseInsensitiveCompare(rhs.action.title)
+                        == .orderedAscending
                 }
                 return lhs.score > rhs.score
             }
@@ -205,6 +240,7 @@ final class LauncherViewModel: ObservableObject {
         if filteredActions.isEmpty {
             selectedIndex = 0
             selectedActionID = nil
+            scrollTargetActionID = nil
             return
         }
 
@@ -213,7 +249,9 @@ final class LauncherViewModel: ObservableObject {
             return
         }
 
-        if let selectedActionID, let existingIndex = filteredActions.firstIndex(where: { $0.id == selectedActionID }) {
+        if let selectedActionID,
+            let existingIndex = filteredActions.firstIndex(where: { $0.id == selectedActionID })
+        {
             updateSelection(index: existingIndex)
         } else {
             updateSelection(index: min(selectedIndex, filteredActions.count - 1))
@@ -224,10 +262,22 @@ final class LauncherViewModel: ObservableObject {
         guard filteredActions.indices.contains(index) else {
             selectedIndex = 0
             selectedActionID = nil
+            scrollTargetActionID = nil
             return
         }
 
         selectedIndex = index
         selectedActionID = filteredActions[index].id
+    }
+
+    private func updateSelection(index: Int, requestScroll: Bool) {
+        updateSelection(index: index)
+        if requestScroll {
+            scrollTargetActionID = selectedActionID
+        }
+    }
+
+    func consumeScrollTarget() {
+        scrollTargetActionID = nil
     }
 }

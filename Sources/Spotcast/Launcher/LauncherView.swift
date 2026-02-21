@@ -1,3 +1,4 @@
+import SpotcastPluginKit
 import SwiftUI
 
 struct LauncherView: View {
@@ -59,13 +60,14 @@ struct LauncherView: View {
                         }
                     }
                 }
-                .onReceive(viewModel.$selectedActionID) { selectedActionID in
+                .onReceive(viewModel.$scrollTargetActionID) { selectedActionID in
                     guard let selectedActionID else {
                         return
                     }
                     withAnimation(.easeInOut(duration: 0.12)) {
                         proxy.scrollTo(selectedActionID, anchor: .center)
                     }
+                    viewModel.consumeScrollTarget()
                 }
             }
             .frame(maxHeight: 360)

@@ -6,7 +6,10 @@ struct SpotcastApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(settings: HotKeySettings.shared)
+            SettingsView(
+                settings: HotKeySettings.shared,
+                pluginSettings: PluginSettings.shared
+            )
         }
     }
 }

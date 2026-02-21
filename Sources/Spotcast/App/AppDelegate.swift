@@ -5,6 +5,7 @@ import Combine
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: LauncherPanelController?
+    private var toastWindowController: ToastWindowController?
     private var primaryHotKey: GlobalHotKey?
     private var fallbackHotKey: GlobalHotKey?
     private var cancellables = Set<AnyCancellable>()
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let panelController = LauncherPanelController()
         self.panelController = panelController
+        self.toastWindowController = ToastWindowController(toastCenter: .shared)
         setupStatusItem()
 
         HotKeySettings.shared.$shortcut
@@ -76,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openSettingsWindow()
     }
 
     @objc private func quitApp() {

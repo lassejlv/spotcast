@@ -30,9 +30,14 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @ObservedObject var settings: HotKeySettings
+    @ObservedObject var pluginSettings: PluginSettings
     @State private var selection: SettingsPane? = .launcher
     @AppStorage("ui.animateLauncher") private var animateLauncher = true
     @AppStorage("ui.centerLauncher") private var centerLauncher = true
+
+    private var scriptPlugins: [PluginCommand] {
+        PluginCommandLoader.load()
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -100,16 +105,52 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             settingsCard(title: "Swift Plugins") {
                 ForEach(PluginRegistry.all, id: \.metadata.id) { plugin in
-                    HStack(spacing: 10) {
-                        Image(systemName: plugin.metadata.iconSystemName ?? "wand.and.stars")
-                            .frame(width: 18)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(plugin.metadata.title)
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(plugin.metadata.subtitle)
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundStyle(.secondary)
+                    let actionID = "swift-plugin:\(plugin.metadata.id)"
+                    Toggle(
+                        isOn: Binding(
+                            get: { pluginSettings.isEnabled(actionID: actionID) },
+                            set: { pluginSettings.setEnabled($0, actionID: actionID) }
+                        )
+                    ) {
+                        HStack(spacing: 10) {
+                            Image(systemName: plugin.metadata.iconSystemName ?? "wand.and.stars")
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(plugin.metadata.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(plugin.metadata.subtitle)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                    }
+                    .toggleStyle(.switch)
+                }
+            }
+
+            settingsCard(title: "Script Plugins") {
+                if scriptPlugins.isEmpty {
+                    Text("No script plugins found in config/commands.json or config/commands.toml")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(scriptPlugins, id: \.id) { plugin in
+                        let actionID = "plugin:\(plugin.id)"
+                        Toggle(
+                            isOn: Binding(
+                                get: { pluginSettings.isEnabled(actionID: actionID) },
+                                set: { pluginSettings.setEnabled($0, actionID: actionID) }
+                            )
+                        ) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(plugin.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(plugin.subtitle)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
                     }
                 }
             }

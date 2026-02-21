@@ -34,6 +34,14 @@ public struct OpenURLPlugin: SpotcastPlugin {
         let openCount = (await context.storage.number(forKey: "openCount")) ?? 0
         await context.storage.setNumber(openCount + 1, forKey: "openCount")
         await context.storage.setString(value, forKey: "lastURL")
+
+        await context.toaster.show(
+            PluginToast(
+                title: "Open URL",
+                message: "Opening \(value)",
+                style: .success
+            )
+        )
         return .openURL(value)
     }
 }
