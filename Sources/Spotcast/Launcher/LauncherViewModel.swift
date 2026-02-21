@@ -4,8 +4,14 @@ import SpotcastPluginKit
 
 @MainActor
 final class LauncherViewModel: ObservableObject {
+    private enum ResultsDisplayMode: String {
+        case always
+        case onDemand
+    }
+
     @Published var query = "" {
         didSet {
+            handleResultsVisibilityOnQueryChange()
             rebuildFilteredActions(resetSelection: true)
         }
     }
@@ -13,6 +19,7 @@ final class LauncherViewModel: ObservableObject {
     @Published private(set) var selectedIndex = 0
     @Published private(set) var selectedActionID: String?
     @Published private(set) var scrollTargetActionID: String?
+    @Published private(set) var isResultsVisible = true
     @Published private(set) var actions: [LauncherAction] = LauncherAction.builtins() {
         didSet {
             rebuildFilteredActions(resetSelection: false)
@@ -29,6 +36,7 @@ final class LauncherViewModel: ObservableObject {
     private var lastAppRefreshAt: Date?
     private var isRefreshingApps = false
     private var cancellables = Set<AnyCancellable>()
+    private var revealedByArrowDown = false
 
     init() {
         pluginSettings.$disabledActionIDs
@@ -46,6 +54,8 @@ final class LauncherViewModel: ObservableObject {
         selectedIndex = 0
         selectedActionID = nil
         scrollTargetActionID = nil
+        revealedByArrowDown = false
+        isResultsVisible = currentResultsDisplayMode == .always
         query = ""
         actions = baseActions() + cachedQuicklinkActions + cachedAppActions
         refreshQuicklinks()
@@ -104,6 +114,14 @@ final class LauncherViewModel: ObservableObject {
     }
 
     func moveSelection(up: Bool) {
+        guard isResultsVisible else {
+            if !up {
+                revealedByArrowDown = true
+                revealResults()
+            }
+            return
+        }
+
         guard !filteredActions.isEmpty else {
             selectedIndex = 0
             selectedActionID = nil
@@ -123,6 +141,10 @@ final class LauncherViewModel: ObservableObject {
     }
 
     func executeSelected() -> Bool {
+        guard isResultsVisible else {
+            return false
+        }
+
         guard filteredActions.indices.contains(selectedIndex) else {
             return false
         }
@@ -131,6 +153,10 @@ final class LauncherViewModel: ObservableObject {
     }
 
     func execute(at index: Int) -> Bool {
+        guard isResultsVisible else {
+            return false
+        }
+
         guard filteredActions.indices.contains(index) else {
             return false
         }
@@ -157,6 +183,14 @@ final class LauncherViewModel: ObservableObject {
 
     func dismissPluginForm() {
         pluginFormSession = nil
+    }
+
+    func handleEscape() -> Bool {
+        if pluginFormSession != nil {
+            dismissPluginForm()
+            return false
+        }
+        return true
     }
 
     func submitPluginForm(values: [String: PluginFieldValue]) -> Bool {
@@ -279,5 +313,37 @@ final class LauncherViewModel: ObservableObject {
 
     func consumeScrollTarget() {
         scrollTargetActionID = nil
+    }
+
+    func revealResultsForTyping() {
+        isResultsVisible = true
+        revealedByArrowDown = false
+    }
+
+    private var currentResultsDisplayMode: ResultsDisplayMode {
+        let raw = UserDefaults.standard.string(forKey: "launcher.resultsDisplayMode") ?? "onDemand"
+        return ResultsDisplayMode(rawValue: raw) ?? .onDemand
+    }
+
+    private func revealResults() {
+        isResultsVisible = true
+        if !filteredActions.isEmpty, selectedActionID == nil {
+            updateSelection(index: 0)
+        }
+    }
+
+    private func handleResultsVisibilityOnQueryChange() {
+        switch currentResultsDisplayMode {
+        case .always:
+            isResultsVisible = true
+        case .onDemand:
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                isResultsVisible = true
+                revealedByArrowDown = false
+            } else {
+                isResultsVisible = revealedByArrowDown
+            }
+        }
     }
 }

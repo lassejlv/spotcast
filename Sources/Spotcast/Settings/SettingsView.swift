@@ -28,12 +28,27 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
+private enum ResultsDisplayOption: String, CaseIterable, Identifiable {
+    case onDemand
+    case always
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .onDemand: "Show On Search / Down Arrow"
+        case .always: "Always Show Results"
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var settings: HotKeySettings
     @ObservedObject var pluginSettings: PluginSettings
     @State private var selection: SettingsPane? = .launcher
     @AppStorage("ui.animateLauncher") private var animateLauncher = true
     @AppStorage("ui.centerLauncher") private var centerLauncher = true
+    @AppStorage("launcher.resultsDisplayMode") private var resultsDisplayMode = "onDemand"
 
     private var scriptPlugins: [PluginCommand] {
         PluginCommandLoader.load()
@@ -77,27 +92,47 @@ struct SettingsView: View {
 
     private var launcherPane: some View {
         settingsCard(title: "Hotkey") {
-            Picker("Modifier", selection: Binding(
-                get: { settings.selectedModifierPreset },
-                set: { settings.update(modifierPreset: $0) }
-            )) {
+            Picker(
+                "Modifier",
+                selection: Binding(
+                    get: { settings.selectedModifierPreset },
+                    set: { settings.update(modifierPreset: $0) }
+                )
+            ) {
                 ForEach(HotKeyModifierPreset.allCases) { preset in
                     Text(preset.title).tag(preset)
                 }
             }
 
-            Picker("Key", selection: Binding(
-                get: { settings.selectedKeyPreset },
-                set: { settings.update(keyPreset: $0) }
-            )) {
+            Picker(
+                "Key",
+                selection: Binding(
+                    get: { settings.selectedKeyPreset },
+                    set: { settings.update(keyPreset: $0) }
+                )
+            ) {
                 ForEach(HotKeyKeyPreset.allCases) { preset in
                     Text(preset.title).tag(preset)
                 }
             }
 
-            Text("Current: \(settings.selectedModifierPreset.title) + \(settings.selectedKeyPreset.title)")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(.secondary)
+            Text(
+                "Current: \(settings.selectedModifierPreset.title) + \(settings.selectedKeyPreset.title)"
+            )
+            .font(.system(size: 12, weight: .regular))
+            .foregroundStyle(.secondary)
+
+            Picker(
+                "Results",
+                selection: Binding(
+                    get: { ResultsDisplayOption(rawValue: resultsDisplayMode) ?? .onDemand },
+                    set: { resultsDisplayMode = $0.rawValue }
+                )
+            ) {
+                ForEach(ResultsDisplayOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
         }
     }
 
@@ -157,8 +192,11 @@ struct SettingsView: View {
 
             settingsCard(title: "Paths") {
                 pathRow("Swift plugin source", value: "Sources/Plugins")
-                pathRow("Script plugin config", value: "config/commands.json | config/commands.toml")
-                pathRow("Plugin storage", value: "~/Library/Application Support/spotcast/plugin-storage")
+                pathRow(
+                    "Script plugin config", value: "config/commands.json | config/commands.toml")
+                pathRow(
+                    "Plugin storage", value: "~/Library/Application Support/spotcast/plugin-storage"
+                )
             }
         }
     }

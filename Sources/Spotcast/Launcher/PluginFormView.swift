@@ -9,7 +9,10 @@ struct PluginFormView: View {
     @State private var values: [String: PluginFieldValue]
     @State private var errorMessage: String?
 
-    init(session: PluginFormSession, onCancel: @escaping () -> Void, onSubmit: @escaping ([String: PluginFieldValue]) -> Void) {
+    init(
+        session: PluginFormSession, onCancel: @escaping () -> Void,
+        onSubmit: @escaping ([String: PluginFieldValue]) -> Void
+    ) {
         self.session = session
         self.onCancel = onCancel
         self.onSubmit = onSubmit
@@ -53,7 +56,7 @@ struct PluginFormView: View {
             }
         }
         .padding(16)
-        .frame(width: 540, height: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -63,7 +66,7 @@ struct PluginFormView: View {
                 .font(.system(size: 13, weight: .medium))
 
             switch field.type {
-            case let .text(multiline):
+            case .text(let multiline):
                 if multiline {
                     TextEditor(text: stringBinding(field.id))
                         .font(.system(size: 13, weight: .regular))
@@ -83,8 +86,10 @@ struct PluginFormView: View {
                 Toggle(isOn: boolBinding(field.id)) {
                     Text(field.placeholder ?? "Enabled")
                 }
-            case let .select(options):
-                Picker(selection: stringBinding(field.id), label: Text(field.placeholder ?? "Select")) {
+            case .select(let options):
+                Picker(
+                    selection: stringBinding(field.id), label: Text(field.placeholder ?? "Select")
+                ) {
                     ForEach(options, id: \.self) { option in
                         Text(option).tag(option)
                     }
@@ -97,7 +102,7 @@ struct PluginFormView: View {
 
     private func stringBinding(_ id: String) -> Binding<String> {
         Binding {
-            guard case let .string(value)? = values[id] else {
+            guard case .string(let value)? = values[id] else {
                 return ""
             }
             return value
@@ -108,7 +113,7 @@ struct PluginFormView: View {
 
     private func numberBinding(_ id: String) -> Binding<Double> {
         Binding {
-            guard case let .number(value)? = values[id] else {
+            guard case .number(let value)? = values[id] else {
                 return 0
             }
             return value
@@ -119,7 +124,7 @@ struct PluginFormView: View {
 
     private func boolBinding(_ id: String) -> Binding<Bool> {
         Binding {
-            guard case let .bool(value)? = values[id] else {
+            guard case .bool(let value)? = values[id] else {
                 return false
             }
             return value
@@ -131,7 +136,7 @@ struct PluginFormView: View {
     private func validate() -> Bool {
         for field in session.plugin.fields where field.required {
             switch values[field.id] {
-            case let .string(value):
+            case .string(let value):
                 if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     errorMessage = "\(field.label) is required"
                     return false
@@ -164,7 +169,7 @@ struct PluginFormView: View {
                 output[field.id] = .number(0)
             case .toggle:
                 output[field.id] = .bool(false)
-            case let .select(options):
+            case .select(let options):
                 output[field.id] = .string(options.first ?? "")
             }
         }

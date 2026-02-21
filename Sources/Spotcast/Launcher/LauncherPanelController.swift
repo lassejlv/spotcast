@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Combine
 import SwiftUI
 
 private final class LauncherPanel: NSPanel {
@@ -9,13 +10,18 @@ private final class LauncherPanel: NSPanel {
 
 @MainActor
 final class LauncherPanelController: NSObject {
+    private let panelWidth: CGFloat = 700
+    private let expandedHeight: CGFloat = 404
+    private let collapsedHeight: CGFloat = 88
+
     private let panel: NSPanel
     private let viewModel = LauncherViewModel()
     private var eventMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
 
     override init() {
         panel = LauncherPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 404),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -26,7 +32,8 @@ final class LauncherPanelController: NSObject {
         panel.contentView = NSHostingView(
             rootView: LauncherView(viewModel: viewModel) { [weak self] in
                 self?.hide()
-            })
+            }
+        )
         panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.backgroundColor = .clear
@@ -38,8 +45,24 @@ final class LauncherPanelController: NSObject {
             .canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle,
         ]
 
+        viewModel.$isResultsVisible
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.resizeForCurrentState(animated: false)
+            }
+            .store(in: &cancellables)
+
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isVisible else {
+                return event
+            }
+
+            if self.viewModel.pluginFormSession != nil {
+                if event.keyCode == UInt16(kVK_Escape) {
+                    _ = self.viewModel.handleEscape()
+                    return nil
+                }
                 return event
             }
 
@@ -57,7 +80,9 @@ final class LauncherPanelController: NSObject {
                 }
                 return nil
             case UInt16(kVK_Escape):
-                self.hide()
+                if self.viewModel.handleEscape() {
+                    self.hide()
+                }
                 return nil
             default:
                 return event
@@ -70,33 +95,20 @@ final class LauncherPanelController: NSObject {
     }
 
     func show() {
-        guard let screen = NSScreen.main else {
-            return
-        }
-
         viewModel.prepareForPresentation()
 
         let defaults = UserDefaults.standard
         let shouldAnimate = (defaults.object(forKey: "ui.animateLauncher") as? Bool) ?? true
-        let shouldCenter = (defaults.object(forKey: "ui.centerLauncher") as? Bool) ?? true
 
-        let visibleFrame = screen.visibleFrame
-        let size = panel.frame.size
-        let x = visibleFrame.midX - (size.width / 2)
-        let y: CGFloat
-        if shouldCenter {
-            y = visibleFrame.midY - (size.height / 2) + 40
-        } else {
-            y = visibleFrame.maxY - size.height - 44
-        }
-        let finalOrigin = NSPoint(x: x, y: y)
-        let startOrigin = NSPoint(x: x, y: y - 18)
+        let finalFrame = targetFrame(for: desiredHeight)
+        var startFrame = finalFrame
+        startFrame.origin.y -= 18
 
         if shouldAnimate {
-            panel.setFrameOrigin(startOrigin)
+            panel.setFrame(startFrame, display: false)
             panel.alphaValue = 0
         } else {
-            panel.setFrameOrigin(finalOrigin)
+            panel.setFrame(finalFrame, display: false)
             panel.alphaValue = 1
         }
 
@@ -107,17 +119,59 @@ final class LauncherPanelController: NSObject {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.16
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrameOrigin(finalOrigin)
+                panel.animator().setFrame(finalFrame, display: true)
                 panel.animator().alphaValue = 1
             }
-        } else {
-            panel.alphaValue = 1
-            panel.setFrameOrigin(finalOrigin)
         }
     }
 
     func hide() {
         panel.orderOut(nil)
+    }
+
+    private func resizeForCurrentState(animated: Bool) {
+        guard panel.isVisible else {
+            return
+        }
+
+        let currentFrame = panel.frame
+        let newHeight = desiredHeight
+        let lockedTopY = currentFrame.maxY
+        let newOriginY = lockedTopY - newHeight
+        let frame = NSRect(
+            x: currentFrame.origin.x,
+            y: newOriginY,
+            width: panelWidth,
+            height: newHeight
+        )
+        panel.setFrame(frame, display: true, animate: animated)
+    }
+
+    private var desiredHeight: CGFloat {
+        if viewModel.pluginFormSession != nil {
+            return expandedHeight
+        }
+        return viewModel.isResultsVisible ? expandedHeight : collapsedHeight
+    }
+
+    private func targetFrame(for height: CGFloat) -> NSRect {
+        let screen = panel.screen ?? NSScreen.main
+        let visibleFrame =
+            screen?.visibleFrame ?? NSScreen.screens.first?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+
+        let defaults = UserDefaults.standard
+        let shouldCenter = (defaults.object(forKey: "ui.centerLauncher") as? Bool) ?? true
+
+        let x = visibleFrame.midX - (panelWidth / 2)
+        let y: CGFloat
+        if shouldCenter {
+            y = visibleFrame.midY - (height / 2) + 150
+        } else {
+            y = visibleFrame.maxY - height - 44
+        }
+
+        return NSRect(x: x, y: y, width: panelWidth, height: height)
     }
 
     deinit {
